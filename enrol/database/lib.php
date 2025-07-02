@@ -186,7 +186,18 @@ class enrol_database_plugin extends enrol_plugin {
                         continue;
                     }
 
-                    $enrolid = $this->add_instance($course);
+                    $timeout = 5;
+                    $locktype = 'enrol_database_user_enrolments';
+                    $resource = 'user:' . $user->id . ':course:' . $course->id;;
+                    $lockfactory = \core\lock\lock_config::get_lock_factory($locktype);
+                    if ($lock = $lockfactory->get_lock($resource, $timeout)) {
+                        $enrolid = $this->add_instance($course);
+                        $lock->release();
+                    } else {
+                        // Prevent race condition, give up.
+                        throw new moodle_exception('locktimeout');
+                    }
+
                     $instances[$course->id] = $DB->get_record('enrol', array('id'=>$enrolid));
                 }
             }

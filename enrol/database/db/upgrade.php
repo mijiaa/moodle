@@ -23,17 +23,27 @@
  */
 
 function xmldb_enrol_database_upgrade($oldversion) {
-    // Automatically generated Moodle v4.2.0 release upgrade line.
-    // Put any upgrade step following this.
+    global $DB;
 
-    // Automatically generated Moodle v4.3.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Automatically generated Moodle v4.4.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Automatically generated Moodle v4.5.0 release upgrade line.
-    // Put any upgrade step following this.
+    if ($oldversion < 2025070300) {
+        // Remove duplicated enrolment records, keeping only the one with the highest ID.
+        $sql = "SELECT *
+                  FROM {enrol} e1
+                 WHERE EXISTS (
+                    SELECT *
+                      FROM {enrol} e2
+                     WHERE e1.courseid = e2.courseid
+                       AND e1.id > e2.id
+                       AND e2.enrol = 'database'
+                    )";
+        $todelete = $DB->get_recordset_sql($sql);
+        $database = enrol_get_plugin('database');
+        foreach ($todelete  as $instance) {
+            $database->delete_instance($instance);
+        }
+        $todelete->close();
+        upgrade_plugin_savepoint(true, 2025070300, 'enrol', 'database');
+    }
 
     // Automatically generated Moodle v5.0.0 release upgrade line.
     // Put any upgrade step following this.
