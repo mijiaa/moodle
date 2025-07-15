@@ -25,6 +25,7 @@
  */
 namespace mod_folder;
 
+use cm_info;
 use context_user;
 use context_module;
 
@@ -401,5 +402,61 @@ final class lib_test extends \advanced_testcase {
                 'count' => 0,
             ],
         ];
+    }
+
+    /**
+     * Test that mod_folder handles custom data correctly after override_customdata() changes it from object to array.
+     * @covers cm_info::override_customdata()
+     *
+     * @return void
+     */
+    public function test_folder_override_customdata(): void {
+        $course = $this->getDataGenerator()->create_course();
+        $folderinline = $this->getDataGenerator()->create_module('folder',
+            ['course' => $course->id, 'name' => 'testfolder', 'display' => FOLDER_DISPLAY_INLINE]);
+
+        $cm = get_fast_modinfo($course)->get_cm($folderinline->cmid);
+
+        $this->assertIsObject($cm->customdata);
+        $cm->override_customdata('showexpanded', 1);
+        $cm->override_customdata('showdownloadfolder', 1);
+        $cm->override_customdata('forcedownload', 1);
+
+        $expecteddata = [
+            'showexpanded' => 1,
+            'showdownloadfolder' => 1,
+            'forcedownload' => 1
+        ];
+
+        $this->assertIsArray($cm->get_custom_data());
+        $this->assertEquals($expecteddata, $cm->get_custom_data());
+
+        // Add a test file to the folder activity.
+        $context = context_module::instance($cm->id);
+        $fs = get_file_storage();
+        $filerecord = array(
+            'contextid' => $context->id,
+            'component' => 'mod_folder',
+            'filearea' => 'content',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => 'testfile.txt'
+        );
+        $fs->create_file_from_string($filerecord, 'Test file content');
+
+        // Verify content after overrides.
+        // The download option should be present when showdownloadfolder=1 and the folder has a file.
+        $formattedcontent = $cm->get_formatted_content();
+        $this->assertStringContainsString($cm->get_formatted_name(['escape' => false]), $formattedcontent);
+        $this->assertStringContainsString('download', $formattedcontent);
+        $this->assertStringContainsString('mod/folder/download_folder.php', $formattedcontent);
+
+        // The download option should not be present when showdownloadfolder=0 and the folder has a file.
+        $cm->override_customdata('showdownloadfolder', 0);
+        // After the first get_formatted_content() call, the state is set to STATE_VIEW so later calls will not call
+        // cminfo_view, manually call it here to update the content.
+        folder_cm_info_view($cm);
+        $formattedcontentnodownload = $cm->get_formatted_content();
+        $this->assertStringNotContainsString('mod/folder/download_folder.php', $formattedcontentnodownload);
     }
 }
