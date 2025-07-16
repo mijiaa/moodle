@@ -25,24 +25,26 @@
 function xmldb_enrol_database_upgrade($oldversion) {
     global $DB;
 
-    if ($oldversion < 2025070300) {
-        // Remove duplicated enrolment records, keeping only the one with the highest ID.
-        $sql = "SELECT *
-                  FROM {enrol} e1
-                 WHERE EXISTS (
-                    SELECT *
-                      FROM {enrol} e2
-                     WHERE e1.courseid = e2.courseid
-                       AND e1.id > e2.id
-                       AND e2.enrol = 'database'
-                    )";
-        $todelete = $DB->get_recordset_sql($sql);
-        $database = enrol_get_plugin('database');
-        foreach ($todelete  as $instance) {
-            $database->delete_instance($instance);
+    if ($oldversion < 2025070400) {
+        // Remove duplicated enrolment records, keeping only the earliest records.
+        $transaction = $DB->start_delegated_transaction();
+        $courses = $DB->get_records_sql(
+            "SELECT courseid
+                   FROM {enrol}
+                  WHERE enrol = 'database'
+               GROUP BY courseid
+                 HAVING COUNT(*) > 1"
+        );
+        foreach ($courses as $course) {
+            $instances =  $DB->get_records('enrol', ['enrol' => 'database', 'courseid' => $course->courseid], 'id ASC');
+            $idstodelete = array_slice(array_keys($instances), 1);
+            [$insql, $inparams] = $DB->get_in_or_equal($idstodelete);
+            $DB->delete_records_select('user_enrolments', "enrolid $insql", $inparams);
+            $DB->delete_records_select('role_assignments', "itemid $insql", $inparams);
+            $DB->delete_records_list('enrol', 'id', $idstodelete);
         }
-        $todelete->close();
-        upgrade_plugin_savepoint(true, 2025070300, 'enrol', 'database');
+        $transaction->allow_commit();
+        upgrade_plugin_savepoint(true, 2025070400, 'enrol', 'database');
     }
 
     // Automatically generated Moodle v5.0.0 release upgrade line.
